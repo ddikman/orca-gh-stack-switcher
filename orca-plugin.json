@@ -1,0 +1,29 @@
+{
+  "manifestVersion": 2,
+  "id": "gh-stack-switcher",
+  "name": "Stack Switcher",
+  "version": "0.1.0",
+  "description": "Lists the GitHub stack of the open workspace's PR, with a button to switch the workspace to any other PR in it.",
+  "engines": {
+    "orca": ">=1.4.248"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "stack",
+        "title": "Stack",
+        "icon": "layers",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "workspace:read" },
+    { "kind": "workspace:write" },
+    { "kind": "agent:read" }
+  ]
+}

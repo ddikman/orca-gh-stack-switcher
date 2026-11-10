@@ -1,0 +1,14 @@
+{
+  "name": "gh-stack-switcher",
+  "private": true,
+  "description": "Orca plugin: a sidebar panel that lists the GitHub stack of the open workspace and switches between its PRs.",
+  "scripts": {
+    "test": "orca plugin test . --json",
+    "typecheck": "node node_modules/typescript/bin/tsc -p .",
+    "check": "orca plugin check . --json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
