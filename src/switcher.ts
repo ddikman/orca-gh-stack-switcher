@@ -14,7 +14,7 @@ import {
 import { parsePullRequestUrl, type createGitHub } from './github'
 import type { StackView, SwitchOutcome, SwitchTarget } from './protocol'
 import { parseStack } from './stack'
-import { findWorkspaceCandidates, type ListedWorkspace, type WorkspaceContext } from './workspace'
+import { findWorkspaceCandidates, isLocal, type ListedWorkspace, type WorkspaceContext } from './workspace'
 
 export type AgentState = 'working' | 'blocked' | 'waiting' | 'done'
 
@@ -40,11 +40,6 @@ type Focus =
   | { kind: 'one'; workspace: ListedWorkspace }
   /** Look-alikes that share the open workspace's name and branch, here or on other machines. */
   | { kind: 'several'; workspaces: ListedWorkspace[]; name: string; branch: string }
-
-/** On this machine, rather than an SSH host. Orca lists local worktrees as "local", folders as null. */
-function isLocal(workspace: ListedWorkspace): boolean {
-  return workspace.hostId === null || workspace.hostId === 'local'
-}
 
 /** The focused workspace's row(s) from `workspace.list`, or the view that says why there is none. */
 async function findFocus(host: SwitcherHost): Promise<Focus> {

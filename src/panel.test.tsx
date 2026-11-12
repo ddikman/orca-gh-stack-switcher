@@ -1,8 +1,9 @@
 // `orca plugin test .` runs this in Node with the same runtime and checks Orca uses. The worker is
 // stood in for by `requests`: what each plugin.request answers.
+import { settings } from 'orca'
 import { afterEach, assert, mockHost, mount, test, type TestPanel } from 'orca/testing'
 import * as panel from './panel'
-import type { StackView, SwitchOutcome, SwitchTarget } from './protocol'
+import type { OpenOutcome, OpenTarget, StackView, SwitchOutcome, SwitchTarget } from './protocol'
 
 let view: TestPanel | undefined
 afterEach(() => view?.unmount())
@@ -35,32 +36,46 @@ function stackOn(current: 11 | 12 | 13): StackView {
 }
 
 /**
- * A worker that serves `views` in turn (the last one repeats) and answers switches with `outcome`.
- * A view may be a promise, to hold the panel in its loading state.
+ * A worker that serves `views` in turn (the last one repeats), answers switches with `outcome` and
+ * opening a PR in Orca's browser with each of `opened` in turn. A view may be a promise, to hold the
+ * panel in its loading state. `openIn` is where the person chose to open PRs, in the plugin's settings.
  */
-function worker(views: (StackView | Promise<StackView>)[], outcome?: SwitchOutcome) {
+function worker(
+  views: (StackView | Promise<StackView>)[],
+  outcome?: SwitchOutcome,
+  options: { openIn?: 'browser' | 'orca'; opened?: OpenOutcome[] } = {}
+) {
   const switches: SwitchTarget[] = []
+  const opens: OpenTarget[] = []
+  const opened = options.opened ?? [{ kind: 'opened' }]
   let loads = 0
   const host = mockHost({
+    settings: options.openIn ? { openPullRequestsIn: options.openIn } : {},
     requests: {
       'stack.load': () => views[Math.min(loads++, views.length - 1)]!,
       'stack.switch': (target: SwitchTarget) => {
         switches.push(target)
         return outcome ?? { kind: 'switched', branch: target.branch }
+      },
+      'stack.openInOrca': (target: OpenTarget) => {
+        opens.push(target)
+        return opened[Math.min(opens.length - 1, opened.length - 1)]!
       }
     }
   })
-  return { host, switches, loads: () => loads }
+  return { host, switches, opens, loads: () => loads }
 }
 
 const switchIn = (number: number) => ({ testId: `pr-${number}`, role: 'button', text: 'Switch' }) as const
+/** The PR's number in its row, which opens the PR. */
+const numberOf = (number: number) => ({ type: 'Link', text: `#${number}` }) as const
 
 test('lists the stack top-first with a Switch button on every PR but the current one', async () => {
   view = await mount(panel, { host: worker([stackOn(12)]).host })
   assert.ok(view.find({ text: /Stack #10/ }))
   assert.ok(view.find({ text: /2 of 3 · main/ }))
   assert.deepEqual(
-    view.findAll({ text: /^#1[123]$/ }).map((element) => element.text),
+    view.findAll({ type: 'Link', text: /^#1[123]$/ }).map((element) => element.text),
     ['#13', '#12', '#11']
   )
   assert.ok(view.find(switchIn(13)))
@@ -80,6 +95,52 @@ test('switches to the PR whose button is pressed, then shows the stack from ther
   assert.equal(view.find(switchIn(13)), null)
   assert.ok(view.find(switchIn(12)))
   assert.ok(view.find({ text: /Switched to feat\/wiring/ }))
+})
+
+test("opens a PR in the person's web browser when its number is pressed", async () => {
+  const fake = worker([stackOn(12)])
+  view = await mount(panel, { host: fake.host })
+  await view.press(numberOf(13))
+  assert.deepEqual(fake.host.callsOf('shell.openExternal'), [{ url: 'https://github.com/acme/widgets/pull/13' }])
+  assert.deepEqual(fake.opens, [])
+  assert.deepEqual(view.refusals, [])
+})
+
+test("opens a PR in Orca's browser when the plugin's settings say so", async () => {
+  const fake = worker([stackOn(12)], undefined, { openIn: 'orca' })
+  view = await mount(panel, { host: fake.host })
+  await view.press(numberOf(11))
+  assert.deepEqual(fake.opens, [{ url: 'https://github.com/acme/widgets/pull/11', workspaceId: 'w1' }])
+  assert.deepEqual(fake.host.callsOf('shell.openExternal'), [])
+})
+
+test('opens PRs where the settings say as soon as the person changes them', async () => {
+  const fake = worker([stackOn(12)])
+  view = await mount(panel, { host: fake.host })
+  await settings.set('openPullRequestsIn', 'orca')
+  await view.settled()
+  await view.press(numberOf(13))
+  assert.deepEqual(fake.opens, [{ url: 'https://github.com/acme/widgets/pull/13', workspaceId: 'w1' }])
+})
+
+test("says why a PR didn't open in Orca's browser, with a way to open it in the web browser", async () => {
+  const failed = { kind: 'failed', message: "Couldn't find the orca command that comes with Orca." } as const
+  const fake = worker([stackOn(12)], undefined, { openIn: 'orca', opened: [failed] })
+  view = await mount(panel, { host: fake.host })
+  await view.press(numberOf(13))
+  assert.ok(view.find({ type: 'Callout', text: /Couldn't find the orca command/ }), view.summary().join('\n'))
+  await view.press({ type: 'Link', text: 'Open it in your web browser' })
+  assert.deepEqual(fake.host.callsOf('shell.openExternal'), [{ url: 'https://github.com/acme/widgets/pull/13' }])
+})
+
+test("takes the warning away once a later press opens the PR in Orca's browser", async () => {
+  const failed = { kind: 'failed', message: "Orca's runtime is still starting." } as const
+  const fake = worker([stackOn(12)], undefined, { openIn: 'orca', opened: [failed, { kind: 'opened' }] })
+  view = await mount(panel, { host: fake.host })
+  await view.press(numberOf(13))
+  assert.ok(view.find({ type: 'Callout', text: /still starting/ }))
+  await view.press(numberOf(13))
+  assert.equal(view.find({ type: 'Callout' }), null, view.summary().join('\n'))
 })
 
 test('says which workspace Orca moved to when another one had the branch', async () => {

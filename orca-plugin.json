@@ -19,11 +19,23 @@
         "entry": "src/panel.tsx",
         "ui": "components"
       }
+    ],
+    "settings": [
+      {
+        "key": "openPullRequestsIn",
+        "title": "Open pull requests in",
+        "description": "Where a PR opens when you click its number in the Stack panel. Plugins can't see Orca's own setting for links, so pick the same here to match it.",
+        "type": "string",
+        "default": "browser",
+        "enum": ["browser", "orca"],
+        "enumLabels": ["Your web browser", "Orca's browser"]
+      }
     ]
   },
   "capabilities": [
     { "kind": "workspace:read" },
     { "kind": "workspace:write" },
-    { "kind": "agent:read" }
+    { "kind": "agent:read" },
+    { "kind": "settings:own" }
   ]
 }

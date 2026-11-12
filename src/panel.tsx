@@ -7,24 +7,28 @@ import {
   Callout,
   EmptyState,
   IconButton,
+  Link,
   on,
   plugin,
   read,
   Row,
   set,
+  settings,
   Spinner,
   Stack,
   Text,
   type PanelContext
 } from 'orca'
 import { createContextTracker } from './context-tracker'
-import type { StackView, SwitchOutcome } from './protocol'
+import type { OpenOutcome, StackView, SwitchOutcome } from './protocol'
 import type { StackEntry } from './stack'
 
 type Notice = {
   tone: 'neutral' | 'accent' | 'warning' | 'danger'
   title?: string
   text: string
+  /** A link shown under the text. */
+  link?: { href: string; label: string }
   /** The branches it is about: it stays while the panel shows one of them. */
   keepFor: string[]
 }
@@ -37,8 +41,14 @@ const view = atom<StackView | null>(null)
 const loading = atom(false)
 /** The PR a switch is running for, if any. */
 const switchingTo = atom<number | null>(null)
-/** The outcome of the last switch, until the next one or a workspace change. */
+/** The outcome of the last switch or open in Orca, until the next one or a workspace change. */
 const notice = atom<Notice | null>(null)
+
+/** The plugin's setting (orca-plugin.json) for where a PR opens when its number is pressed. */
+const OPEN_IN_SETTING = 'openPullRequestsIn'
+/** `browser`: the person's web browser, where Orca opens links unless told otherwise. `orca`: a browser tab of Orca. */
+type OpenIn = 'browser' | 'orca'
+const openIn = atom<OpenIn>('browser')
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -117,6 +127,42 @@ async function switchTo(entry: StackEntry): Promise<void> {
   await load()
 }
 
+async function loadOpenIn(): Promise<void> {
+  let chosen: unknown
+  try {
+    chosen = await settings.get(OPEN_IN_SETTING)
+  } catch {
+    chosen = undefined // One Orca won't read counts as unset: the default.
+  }
+  set(openIn, chosen === 'orca' ? 'orca' : 'browser')
+}
+
+/** Opens the PR in a browser tab of Orca, in the workspace the panel shows; says so when it can't. */
+async function openInOrca(entry: StackEntry): Promise<void> {
+  const shown = read(view)
+  if (shown?.kind !== 'stack') return
+  set(notice, null)
+  let outcome: OpenOutcome
+  try {
+    outcome = await plugin.request(
+      'stack.openInOrca',
+      { url: entry.url, workspaceId: shown.workspaceId },
+      { timeoutMs: 60_000 }
+    )
+  } catch (error) {
+    outcome = { kind: 'failed', message: messageOf(error) }
+  }
+  if (outcome.kind === 'failed') {
+    set(notice, {
+      tone: 'warning',
+      title: `Couldn't open #${entry.number} in Orca`,
+      text: outcome.message,
+      link: { href: entry.url, label: 'Open it in your web browser' },
+      keepFor: [shown.branch]
+    })
+  }
+}
+
 export function setup(ctx: PanelContext): void {
   tracker = createContextTracker()
   ctx.subscriptions.push(
@@ -124,9 +170,23 @@ export function setup(ctx: PanelContext): void {
       if (tracker.needsLoad(context)) {
         void load()
       }
+    }),
+    settings.onDidChange(({ key }) => {
+      if (key === OPEN_IN_SETTING) void loadOpenIn()
     })
   )
+  void loadOpenIn()
   void load()
+}
+
+/** The PR's number, a link that opens the PR where the plugin's settings say. */
+function PrNumber({ entry }: { entry: StackEntry }) {
+  const label = `#${entry.number}`
+  return read(openIn) === 'orca' ? (
+    <Link onPress={() => openInOrca(entry)}>{label}</Link>
+  ) : (
+    <Link href={entry.url}>{label}</Link>
+  )
 }
 
 function EntryRow({ entry }: { entry: StackEntry }) {
@@ -144,7 +204,9 @@ function EntryRow({ entry }: { entry: StackEntry }) {
       background={entry.current ? 'muted' : 'none'}
     >
       <Box shrink={false}>
-        <Text size="sm" weight="medium">{`#${entry.number}`}</Text>
+        <Text size="sm" weight="medium">
+          <PrNumber entry={entry} />
+        </Text>
       </Box>
       <Box grow shrink minWidth={0}>
         <Text size="sm" truncate>
@@ -278,7 +340,14 @@ export default function Panel() {
           </Text>
         ) : (
           <Callout tone={message.tone} title={message.title}>
-            <Text>{message.text}</Text>
+            <Stack gap="sm">
+              <Text>{message.text}</Text>
+              {message.link ? (
+                <Text>
+                  <Link href={message.link.href}>{message.link.label}</Link>
+                </Text>
+              ) : null}
+            </Stack>
           </Callout>
         )
       ) : null}

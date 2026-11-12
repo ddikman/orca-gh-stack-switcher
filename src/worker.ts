@@ -2,7 +2,8 @@
 // runs git and gh in the open workspace's folder and answers the panel (see src/protocol.ts).
 import type { OrcaWorkerApi } from 'orca/worker'
 import { createGitHub, execGh } from './github'
-import type { SwitchOutcome, SwitchTarget } from './protocol'
+import { execOrca, openInOrca } from './orca-browser'
+import type { OpenOutcome, SwitchOutcome, SwitchTarget } from './protocol'
 import { loadStack, switchTo, type SwitcherDeps } from './switcher'
 
 function isSwitchTarget(input: unknown): input is SwitchTarget {
@@ -51,5 +52,11 @@ export default function activate(orca: OrcaWorkerApi): void {
     } finally {
       switching = false
     }
+  })
+
+  orca.panels.handle('stack.openInOrca', async (input): Promise<OpenOutcome> => {
+    const outcome = await openInOrca(deps.host.listWorkspaces, execOrca, input)
+    if (outcome.kind === 'failed') orca.log(`open in Orca: ${outcome.message}`)
+    return outcome
   })
 }

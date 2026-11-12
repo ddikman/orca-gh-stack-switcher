@@ -92,6 +92,14 @@ test('refuses a switch request that does not say which workspace it is for', asy
   await worker.deactivate()
 })
 
+test("opens nothing in Orca's browser for a workspace Orca no longer lists", async () => {
+  const worker = await mountWorker(main, { host: orcaShowing() })
+  const outcome = await worker.request('stack.openInOrca', { url: target('feat/screen').url, workspaceId: 'w9' })
+  assert.equal(outcome.kind, 'failed')
+  assert.deepEqual(worker.refusals, [])
+  await worker.deactivate()
+})
+
 test('says there is nothing to show when no workspace is open', async () => {
   const host = mockHost({ results: { 'workspace.readContext': null } })
   const worker = await mountWorker(main, { host })

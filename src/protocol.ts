@@ -29,11 +29,22 @@ export type SwitchOutcome =
   /** Git, gh or Orca failed part-way; `message` is what they said. */
   | { kind: 'failed'; message: string }
 
+/** Which PR to open in Orca's browser, from a row the panel showed for the workspace `workspaceId`. */
+export type OpenTarget = { url: string; workspaceId: string }
+
+export type OpenOutcome =
+  /** Orca opened the PR in a new browser tab of that workspace. */
+  | { kind: 'opened' }
+  /** Nothing opened; `message` says why. */
+  | { kind: 'failed'; message: string }
+
 declare module 'orca' {
   interface PluginRequests {
     /** The stack of the focused workspace's PR. */
     'stack.load': { output: StackView }
     /** Switches the focused workspace to another PR of its stack. */
     'stack.switch': { input: SwitchTarget; output: SwitchOutcome }
+    /** Opens a PR of the stack in a browser tab of Orca, in the workspace the panel showed it for. */
+    'stack.openInOrca': { input: OpenTarget; output: OpenOutcome }
   }
 }

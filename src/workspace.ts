@@ -10,6 +10,11 @@ export type ListedWorkspace = {
   hostId: string | null
 }
 
+/** On this machine, rather than an SSH host. Orca lists local worktrees as "local", folders as null. */
+export function isLocal(workspace: ListedWorkspace): boolean {
+  return workspace.hostId === null || workspace.hostId === 'local'
+}
+
 /** What `workspace.readContext` answers. */
 export type WorkspaceContext = {
   branch: string
